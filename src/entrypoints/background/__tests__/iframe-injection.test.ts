@@ -56,12 +56,21 @@ function createDetails(overrides: Partial<NavigationDetails> = {}): NavigationDe
   }
 }
 
-function createConfig({ nodeTranslationEnabled = false }: { nodeTranslationEnabled?: boolean } = {}): Config {
+function createConfig({
+  nodeTranslationEnabled = false,
+  selectionToolbarEnabled = false,
+}: {
+  nodeTranslationEnabled?: boolean
+  selectionToolbarEnabled?: boolean
+} = {}): Config {
   return {
     translate: {
       node: {
         enabled: nodeTranslationEnabled,
       },
+    },
+    selectionToolbar: {
+      enabled: selectionToolbarEnabled,
     },
     siteControl: {
       mode: "blacklist",
@@ -137,6 +146,42 @@ describe("setupIframeInjection", () => {
     expect(executeScriptMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
       target: { tabId: currentTabId, documentIds: ["doc-1"] },
       files: ["/content-scripts/host.js"],
+    }))
+  })
+
+  it("injects selection content into iframes when selection toolbar is enabled", async () => {
+    const { onCompleted } = await setupSubject()
+    storageGetItemMock.mockResolvedValue({ enabled: false })
+    getLocalConfigMock.mockResolvedValue(createConfig({
+      nodeTranslationEnabled: false,
+      selectionToolbarEnabled: true,
+    }))
+
+    await onCompleted(createDetails())
+
+    expect(executeScriptMock).toHaveBeenCalledTimes(2)
+    expect(executeScriptMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      target: { tabId: currentTabId, documentIds: ["doc-1"] },
+      files: ["/content-scripts/selection.js"],
+    }))
+  })
+
+  it("injects existing iframes for selection-only mode when explicitly requested", async () => {
+    const { injectHostContentIntoTabIframes } = await import("../iframe-injection")
+
+    storageGetItemMock.mockResolvedValue({ enabled: false })
+    getLocalConfigMock.mockResolvedValue(createConfig({
+      nodeTranslationEnabled: false,
+      selectionToolbarEnabled: true,
+    }))
+
+    await injectHostContentIntoTabIframes(currentTabId)
+
+    expect(getAllFramesMock).toHaveBeenCalledWith({ tabId: currentTabId })
+    expect(executeScriptMock).toHaveBeenCalledTimes(2)
+    expect(executeScriptMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      target: { tabId: currentTabId, frameIds: [2] },
+      files: ["/content-scripts/selection.js"],
     }))
   })
 

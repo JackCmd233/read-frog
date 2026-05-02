@@ -3,11 +3,7 @@ import type { LanguageItem } from "@/components/language-combobox-options"
 import { i18n } from "#imports"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
 import { Icon } from "@iconify/react"
-import {
-  LANG_CODE_TO_EN_NAME,
-  LANG_CODE_TO_LOCALE_NAME,
-  langCodeISO6393Schema,
-} from "@read-frog/definitions"
+import { LANG_CODE_TO_EN_NAME, langCodeISO6393Schema } from "@read-frog/definitions"
 import { IconChevronDown } from "@tabler/icons-react"
 import { useAtom, useAtomValue } from "jotai"
 import { useMemo } from "react"
@@ -23,10 +19,7 @@ import {
 } from "@/components/ui/base-ui/combobox"
 import { configFieldsAtomMap } from "@/utils/atoms/config"
 import { detectedCodeAtom } from "@/utils/atoms/detected-code"
-
-function langCodeLabel(langCode: LangCodeISO6393) {
-  return `${LANG_CODE_TO_EN_NAME[langCode]} (${LANG_CODE_TO_LOCALE_NAME[langCode]})`
-}
+import { langCodeLabel } from "@/utils/lang-code-label"
 
 function createLanguageItem(code: LangCodeISO6393): LanguageItem<LangCodeISO6393> {
   return {

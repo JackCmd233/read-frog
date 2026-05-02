@@ -85,6 +85,7 @@ async function renderSplitTranslatorShortcut() {
 describe("splitTranslatorShortcut", () => {
   beforeEach(() => {
     useAtomMock.mockImplementation(() => [translateConfigMock, setTranslateConfigMock])
+    vi.stubEnv("BROWSER", "chrome")
   })
 
   it("renders the configured split translator shortcut", async () => {
@@ -129,5 +130,15 @@ describe("splitTranslatorShortcut", () => {
         shortcut: "",
       },
     })
+  })
+
+  it("shows an unavailable hint instead of the recorder on Firefox", async () => {
+    vi.stubEnv("BROWSER", "firefox")
+
+    await renderSplitTranslatorShortcut()
+
+    expect(screen.getByText("options.translation.splitTranslatorShortcut.title")).toBeInTheDocument()
+    expect(screen.getByText("sidePanel.firefoxUserActionHint")).toBeInTheDocument()
+    expect(screen.queryByLabelText("split-shortcut-recorder")).not.toBeInTheDocument()
   })
 })

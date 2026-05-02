@@ -62,6 +62,15 @@ const llmProvider: ProviderConfig = {
   model: { model: "gpt-5-mini", isCustomModel: false, customModel: null },
 }
 
+const otherLlmProvider: ProviderConfig = {
+  id: "anthropic-default",
+  name: "Anthropic",
+  provider: "anthropic",
+  enabled: true,
+  apiKey: "sk-ant-test",
+  model: { model: "claude-3-5-haiku-latest", isCustomModel: false, customModel: null },
+}
+
 describe("translation queue helpers", () => {
   beforeEach(() => {
     vi.resetModules()
@@ -306,5 +315,55 @@ describe("translation queue helpers", () => {
       "Generated summary",
     ])
     expect(generateArticleSummaryMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not let one provider fail-fast cancel another provider request in the same entrypoint", async () => {
+    const unauthorizedError = Object.assign(new Error("Unauthorized"), {
+      statusCode: 401,
+    })
+
+    let otherProviderResolved = false
+
+    executeTranslateMock.mockImplementation(async (_text, _langConfig, providerConfig) => {
+      if ((providerConfig as ProviderConfig).id === llmProvider.id) {
+        throw unauthorizedError
+      }
+
+      otherProviderResolved = true
+      return "other provider translation"
+    })
+
+    const { setUpWebPageTranslationQueue } = await import("../translation-queues")
+    await setUpWebPageTranslationQueue()
+
+    const handler = getRegisteredMessageHandler("enqueueTranslateRequest")
+    const failedRequest = handler({
+      data: {
+        text: "hello",
+        langConfig: DEFAULT_CONFIG.language,
+        providerConfig: llmProvider,
+        scheduleAt: Date.now(),
+        hash: "provider-a-hash",
+        webTitle: "Page title",
+        webContent: "Page body",
+        webSummary: "Ready summary",
+      },
+    })
+    const unaffectedRequest = handler({
+      data: {
+        text: "world",
+        langConfig: DEFAULT_CONFIG.language,
+        providerConfig: otherLlmProvider,
+        scheduleAt: Date.now(),
+        hash: "provider-b-hash",
+        webTitle: "Page title",
+        webContent: "Page body",
+        webSummary: "Ready summary",
+      },
+    })
+
+    await expect(failedRequest).rejects.toBe(unauthorizedError)
+    await expect(unaffectedRequest).resolves.toBe("other provider translation")
+    expect(otherProviderResolved).toBe(true)
   })
 })

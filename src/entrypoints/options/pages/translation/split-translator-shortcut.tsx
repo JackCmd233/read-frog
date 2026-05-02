@@ -8,6 +8,7 @@ import { ConfigCard } from "../../components/config-card"
 export function SplitTranslatorShortcut() {
   const [translateConfig, setTranslateConfig] = useAtom(configFieldsAtomMap.translate)
   const shortcut = translateConfig.splitTranslator.shortcut ?? DEFAULT_SPLIT_TRANSLATOR_SHORTCUT_KEY
+  const isFirefox = import.meta.env.BROWSER === "firefox"
 
   const updateShortcut = (shortcut: string) => {
     void setTranslateConfig({
@@ -21,9 +22,13 @@ export function SplitTranslatorShortcut() {
     <ConfigCard
       id="split-translator-shortcut"
       title={i18n.t("options.translation.splitTranslatorShortcut.title")}
-      description={i18n.t("options.translation.splitTranslatorShortcut.description")}
+      description={isFirefox
+        ? i18n.t("sidePanel.firefoxUserActionHint")
+        : i18n.t("options.translation.splitTranslatorShortcut.description")}
     >
-      <ShortcutKeyRecorder shortcutKey={shortcut} onChange={updateShortcut} />
+      {isFirefox
+        ? null
+        : <ShortcutKeyRecorder shortcutKey={shortcut} onChange={updateShortcut} />}
     </ConfigCard>
   )
 }

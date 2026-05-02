@@ -86,15 +86,19 @@ async function getFrameSnapshot(tabId: number): Promise<FrameInfoForSiteControl[
 async function getShouldInjectHostContentIntoTabIframes(
   tabId: number,
   existingConfig?: Config | null,
-): Promise<{ config: Config | null, shouldInject: boolean }> {
+): Promise<{ config: Config | null, shouldInjectHost: boolean, shouldInjectSelection: boolean }> {
   const [isPageTranslationEnabled, config] = await Promise.all([
     getPageTranslationEnabled(tabId),
     existingConfig === undefined ? getLocalConfig() : Promise.resolve(existingConfig),
   ])
 
+  const shouldInjectHost = isPageTranslationEnabled || Boolean(config?.translate.node.enabled)
+  const shouldInjectSelection = Boolean(config?.selectionToolbar.enabled)
+
   return {
     config,
-    shouldInject: isPageTranslationEnabled || Boolean(config?.translate.node.enabled),
+    shouldInjectHost,
+    shouldInjectSelection,
   }
 }
 
@@ -102,6 +106,8 @@ async function injectHostContentIntoFrame(
   details: FrameInjectionDetails,
   frames?: FrameInfoForSiteControl[],
   existingConfig?: Config | null,
+  shouldInjectHost = true,
+  shouldInjectSelection = false,
 ) {
   const frameKey = getFrameInjectionKey(details)
   const documentKey = getDocumentInjectionKey(details)
@@ -152,10 +158,19 @@ async function injectHostContentIntoFrame(
         args: [SITE_CONTROL_URL_WINDOW_KEY, siteControlUrl],
       })
 
-      await browser.scripting.executeScript({
-        target,
-        files: ["/content-scripts/host.js"],
-      })
+      if (shouldInjectHost) {
+        await browser.scripting.executeScript({
+          target,
+          files: ["/content-scripts/host.js"],
+        })
+      }
+
+      if (shouldInjectSelection) {
+        await browser.scripting.executeScript({
+          target,
+          files: ["/content-scripts/selection.js"],
+        })
+      }
 
       injectedDocumentKeysByFrame.set(frameKey, documentKey)
     }
@@ -170,16 +185,17 @@ async function injectHostContentIntoFrame(
 
 export async function injectHostContentIntoTabIframes(tabId: number) {
   let config: Config | null
-  let shouldInject: boolean
+  let shouldInjectHost: boolean
+  let shouldInjectSelection: boolean
   try {
-    ({ config, shouldInject } = await getShouldInjectHostContentIntoTabIframes(tabId))
+    ({ config, shouldInjectHost, shouldInjectSelection } = await getShouldInjectHostContentIntoTabIframes(tabId))
   }
   catch (error) {
     logger.warn("[Background][IframeInjection] Failed to resolve iframe injection state", error)
     return
   }
 
-  if (!shouldInject)
+  if (!shouldInjectHost && !shouldInjectSelection)
     return
 
   let frames: FrameInfoForSiteControl[]
@@ -201,7 +217,7 @@ export async function injectHostContentIntoTabIframes(tabId: number) {
       frameId: frame.frameId,
       parentFrameId: frame.parentFrameId,
       url: frame.url,
-    }, frames, config)))
+    }, frames, config, shouldInjectHost, shouldInjectSelection)))
 }
 
 export function setupIframeInjection() {
@@ -225,10 +241,11 @@ export function setupIframeInjection() {
       return
 
     let config: Config | null
-    let shouldInject: boolean
+    let shouldInjectHost: boolean
+    let shouldInjectSelection: boolean
     try {
-      ({ config, shouldInject } = await getShouldInjectHostContentIntoTabIframes(details.tabId))
-      if (!shouldInject)
+      ({ config, shouldInjectHost, shouldInjectSelection } = await getShouldInjectHostContentIntoTabIframes(details.tabId))
+      if (!shouldInjectHost && !shouldInjectSelection)
         return
     }
     catch (error) {
@@ -236,6 +253,6 @@ export function setupIframeInjection() {
       return
     }
 
-    await injectHostContentIntoFrame(details, undefined, config)
+    await injectHostContentIntoFrame(details, undefined, config, shouldInjectHost, shouldInjectSelection)
   })
 }

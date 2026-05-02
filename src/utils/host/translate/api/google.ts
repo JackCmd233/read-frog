@@ -1,26 +1,27 @@
 import { attachRequestErrorMeta } from "@/utils/request/retry-policy"
 
-const GOOGLE_TRANSLATE_HTML_URL = "https://translate-pa.googleapis.com/v1/translateHtml"
-const GOOGLE_TRANSLATE_HTML_API_KEY = "AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520"
-const GOOGLE_TRANSLATE_HTML_CLIENT = "wt_lib"
+const GOOGLE_TRANSLATE_SINGLE_URL = "https://translate.googleapis.com/translate_a/single"
+const GOOGLE_TRANSLATE_SINGLE_CLIENT = "gtx"
 
 export async function googleTranslate(
   sourceText: string,
   fromLang: string,
   toLang: string,
 ): Promise<string> {
+  const query = new URLSearchParams({
+    client: GOOGLE_TRANSLATE_SINGLE_CLIENT,
+    sl: fromLang,
+    tl: toLang,
+    dt: "t",
+    strip: "1",
+    nonced: "1",
+    q: sourceText,
+  })
+
   const resp = await fetch(
-    GOOGLE_TRANSLATE_HTML_URL,
+    `${GOOGLE_TRANSLATE_SINGLE_URL}?${query.toString()}`,
     {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json+protobuf",
-        "X-Goog-API-Key": GOOGLE_TRANSLATE_HTML_API_KEY,
-      },
-      body: JSON.stringify([
-        [[sourceText], fromLang, toLang],
-        GOOGLE_TRANSLATE_HTML_CLIENT,
-      ]),
+      method: "GET",
     },
   ).catch((error) => {
     throw attachRequestErrorMeta(
@@ -47,11 +48,21 @@ export async function googleTranslate(
   try {
     const result = await resp.json()
 
-    if (!Array.isArray(result) || !Array.isArray(result[0]) || typeof result[0][0] !== "string") {
+    if (!Array.isArray(result) || !Array.isArray(result[0])) {
       throw new TypeError("Unexpected response format from translation API")
     }
 
-    return result[0][0]
+    const translatedText = result[0]
+      .filter(Array.isArray)
+      .map(chunk => chunk[0])
+      .filter((chunk): chunk is string => typeof chunk === "string" && chunk.length > 0)
+      .join("")
+
+    if (translatedText === "") {
+      throw new TypeError("Unexpected response format from translation API")
+    }
+
+    return translatedText
   }
   catch (error) {
     throw new Error(

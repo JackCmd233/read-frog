@@ -1,11 +1,7 @@
 import type { LangCodeISO6393 } from "@read-frog/definitions"
 import type { FormEvent } from "react"
 import { i18n } from "#imports"
-import {
-  LANG_CODE_TO_EN_NAME,
-  LANG_CODE_TO_LOCALE_NAME,
-  langCodeISO6393Schema,
-} from "@read-frog/definitions"
+import { langCodeISO6393Schema } from "@read-frog/definitions"
 import { Button } from "@/components/ui/base-ui/button"
 import {
   Select,
@@ -16,10 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/base-ui/select"
 import { Textarea } from "@/components/ui/base-ui/textarea"
-
-function langCodeLabel(langCode: LangCodeISO6393) {
-  return `${LANG_CODE_TO_EN_NAME[langCode]} (${LANG_CODE_TO_LOCALE_NAME[langCode]})`
-}
+import { langCodeLabel } from "@/utils/lang-code-label"
 
 export function TextInputForm({
   disabled,

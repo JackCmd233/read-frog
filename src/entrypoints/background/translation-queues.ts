@@ -158,18 +158,44 @@ interface TranslationQueueSetupConfig<TContext = unknown> {
   promptResolver: PromptResolver<TContext>
 }
 
-async function createTranslationQueues<TContext>(config: TranslationQueueSetupConfig<TContext>) {
-  const { rate, capacity } = config.requestQueueConfig
-  const { maxCharactersPerBatch, maxItemsPerBatch } = config.batchQueueConfig
-  const { promptResolver } = config
-
-  const requestQueue = new RequestQueue({
-    rate,
-    capacity,
+function createProviderRequestQueueManager(config: RequestQueueConfig) {
+  let queueOptions = {
+    rate: config.rate,
+    capacity: config.capacity,
     timeoutMs: 20_000,
     maxRetries: 2,
     baseRetryDelayMs: 1_000,
-  })
+  }
+  const queues = new Map<string, RequestQueue>()
+
+  return {
+    get(providerConfig: Pick<ProviderConfig, "id">) {
+      const existingQueue = queues.get(providerConfig.id)
+      if (existingQueue) {
+        return existingQueue
+      }
+
+      const queue = new RequestQueue({ ...queueOptions })
+      queues.set(providerConfig.id, queue)
+      return queue
+    },
+    setQueueOptions(options: Partial<RequestQueueConfig>) {
+      queueOptions = {
+        ...queueOptions,
+        ...options,
+      }
+
+      for (const queue of queues.values()) {
+        queue.setQueueOptions(options)
+      }
+    },
+  }
+}
+
+async function createTranslationQueues<TContext>(config: TranslationQueueSetupConfig<TContext>) {
+  const { maxCharactersPerBatch, maxItemsPerBatch } = config.batchQueueConfig
+  const { promptResolver } = config
+  const requestQueueManager = createProviderRequestQueueManager(config.requestQueueConfig)
 
   const batchQueue = new BatchQueue<TranslateBatchData<TContext>, string>({
     maxCharactersPerBatch,
@@ -191,7 +217,7 @@ async function createTranslationQueues<TContext>(config: TranslationQueueSetupCo
         return await executeBatchTranslation(dataList, promptResolver)
       }
 
-      return requestQueue.enqueue(batchThunk, earliestScheduleAt, hash)
+      return requestQueueManager.get(providerConfig).enqueue(batchThunk, earliestScheduleAt, hash)
     },
     executeIndividual: async (data) => {
       const { text, langConfig, providerConfig, hash, scheduleAt, context } = data
@@ -199,7 +225,7 @@ async function createTranslationQueues<TContext>(config: TranslationQueueSetupCo
         await putBatchRequestRecord({ originalRequestCount: 1, providerConfig })
         return executeTranslate(text, langConfig, providerConfig, promptResolver, { context })
       }
-      return requestQueue.enqueue(thunk, scheduleAt, hash)
+      return requestQueueManager.get(providerConfig).enqueue(thunk, scheduleAt, hash)
     },
     onError: (error, context) => {
       const errorType = context.isFallback ? "Individual request" : "Batch request"
@@ -210,7 +236,7 @@ async function createTranslationQueues<TContext>(config: TranslationQueueSetupCo
     },
   })
 
-  return { requestQueue, batchQueue }
+  return { requestQueueManager, batchQueue }
 }
 
 export async function setUpWebPageTranslationQueue() {
@@ -218,7 +244,7 @@ export async function setUpWebPageTranslationQueue() {
 
   const { translate: { requestQueueConfig, batchQueueConfig } } = config ?? DEFAULT_CONFIG
 
-  const { requestQueue, batchQueue } = await createTranslationQueues({
+  const { requestQueueManager, batchQueue } = await createTranslationQueues({
     requestQueueConfig,
     batchQueueConfig,
     promptResolver: getTranslatePrompt,
@@ -249,7 +275,7 @@ export async function setUpWebPageTranslationQueue() {
     else {
       // Create thunk based on type and params
       const thunk = () => executeTranslate(text, langConfig, providerConfig, getTranslatePrompt)
-      result = await requestQueue.enqueue(thunk, scheduleAt, hash)
+      result = await requestQueueManager.get(providerConfig).enqueue(thunk, scheduleAt, hash)
     }
 
     // Cache the translation result if successful
@@ -271,12 +297,17 @@ export async function setUpWebPageTranslationQueue() {
       return null
     }
 
-    return await getOrGenerateWebPageSummary(webTitle, webContent, providerConfig, requestQueue)
+    return await getOrGenerateWebPageSummary(
+      webTitle,
+      webContent,
+      providerConfig,
+      requestQueueManager.get(providerConfig),
+    )
   })
 
   onMessage("setTranslateRequestQueueConfig", (message) => {
     const { data } = message
-    requestQueue.setQueueOptions(data)
+    requestQueueManager.setQueueOptions(data)
   })
 
   onMessage("setTranslateBatchQueueConfig", (message) => {
@@ -292,7 +323,7 @@ export async function setUpSubtitlesTranslationQueue() {
   const config = await ensureInitializedConfig()
   const { videoSubtitles: { requestQueueConfig, batchQueueConfig } } = config ?? DEFAULT_CONFIG
 
-  const { requestQueue, batchQueue } = await createTranslationQueues({
+  const { requestQueueManager, batchQueue } = await createTranslationQueues({
     requestQueueConfig,
     batchQueueConfig,
     promptResolver: getSubtitlesTranslatePrompt,
@@ -320,7 +351,7 @@ export async function setUpSubtitlesTranslationQueue() {
     }
     else {
       const thunk = () => executeTranslate(text, langConfig, providerConfig, getSubtitlesTranslatePrompt)
-      result = await requestQueue.enqueue(thunk, scheduleAt, hash)
+      result = await requestQueueManager.get(providerConfig).enqueue(thunk, scheduleAt, hash)
     }
 
     if (result && hash) {
@@ -341,12 +372,17 @@ export async function setUpSubtitlesTranslationQueue() {
       return null
     }
 
-    return await getOrGenerateSubtitleSummary(videoTitle, subtitlesContext, providerConfig, requestQueue)
+    return await getOrGenerateSubtitleSummary(
+      videoTitle,
+      subtitlesContext,
+      providerConfig,
+      requestQueueManager.get(providerConfig),
+    )
   })
 
   onMessage("setSubtitlesRequestQueueConfig", (message) => {
     const { data } = message
-    requestQueue.setQueueOptions(data)
+    requestQueueManager.setQueueOptions(data)
   })
 
   onMessage("setSubtitlesBatchQueueConfig", (message) => {

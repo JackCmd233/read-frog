@@ -9,6 +9,10 @@ import { isPageTranslationShortcutEmpty, isValidConfiguredPageTranslationShortcu
  * Binds the configured Split Translator shortcut on host pages.
  */
 export async function bindSplitTranslatorShortcutKey() {
+  if (import.meta.env.BROWSER === "firefox") {
+    return () => {}
+  }
+
   const config = await getLocalConfig()
   const shortcut = config?.translate.splitTranslator.shortcut
   if (!shortcut || isPageTranslationShortcutEmpty(shortcut)) {

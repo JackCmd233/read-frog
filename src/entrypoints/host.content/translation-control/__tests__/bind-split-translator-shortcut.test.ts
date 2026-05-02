@@ -45,6 +45,7 @@ vi.mock("@/utils/logger", () => ({
 describe("bindSplitTranslatorShortcutKey", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubEnv("BROWSER", "chrome")
     mockRegister.mockReturnValue({
       unregister: mockUnregister,
     })
@@ -139,5 +140,22 @@ describe("bindSplitTranslatorShortcutKey", () => {
     await bindSplitTranslatorShortcutKey()
 
     expect(mockRegister).not.toHaveBeenCalled()
+  })
+
+  it("skips registration on Firefox because the sidebar requires an extension user action", async () => {
+    vi.stubEnv("BROWSER", "firefox")
+    mockGetLocalConfig.mockResolvedValue({
+      translate: {
+        splitTranslator: {
+          shortcut: "Alt+S",
+        },
+      },
+    })
+
+    const cleanup = await bindSplitTranslatorShortcutKey()
+
+    expect(mockRegister).not.toHaveBeenCalled()
+    cleanup()
+    expect(mockUnregister).not.toHaveBeenCalled()
   })
 })

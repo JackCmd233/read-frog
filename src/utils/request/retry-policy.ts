@@ -146,7 +146,7 @@ export const defaultRequestRetryPolicy: RequestRetryPolicy = {
     }
 
     const baseDelayMs = context.baseRetryDelayMs * (2 ** context.retryCount)
-    const delayMs = clampRetryDelay(withJitter(baseDelayMs, false))
+    const delayMs = clampRetryDelay(withJitter(baseDelayMs))
 
     return { action: "retry", delayMs }
   },
@@ -311,10 +311,7 @@ function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null
 }
 
-function withJitter(delayMs: number, disabled: boolean): number {
-  if (disabled) {
-    return delayMs
-  }
+function withJitter(delayMs: number): number {
   return delayMs + Math.random() * 0.1 * delayMs
 }
 
